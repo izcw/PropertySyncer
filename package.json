@@ -1,0 +1,43 @@
+{
+  "name": "property-syncer",
+  "version": "1.0.3",
+  "description": "高性能 Vue 3 响应式属性同步工具，用于在响应式对象与多个ref之间进行精准、可控的属性映射与更新。",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "vue",
+    "vue3",
+    "sync",
+    "property",
+    "reactive",
+    "watch",
+    "composition-api"
+  ],
+  "author": "izcw",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/izcw/property-syncer"
+  },
+  "bugs": {
+    "url": "https://github.com/izcw/property-syncer/issues"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "rollup": "^3.0.0",
+    "rollup-plugin-terser": "^7.0.2"
+  }
+}

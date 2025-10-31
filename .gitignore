@@ -1,0 +1,30 @@
+# Node.js / npm
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Rollup / 构建产物
+dist/
+*.log
+
+# 配置文件
+.vscode/
+.idea/
+*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# npm 发布忽略文件
+.npmignore
+
+# Git
+*.orig
