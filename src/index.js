@@ -1,17 +1,53 @@
 import { watch, unref, onUnmounted } from 'vue'
 
 /**
- * 将路径字符串转为数组并安全读取对象值（支持数组下标）
- * 例如 "Master[0].volume" -> ['Master','0','volume'] -> 访问 obj.Master[0].volume
- * @param {object} obj - 源对象（可能是 reactive 或普通对象）
- * @param {string} path - 属性路径，如 "Master[0].volume"
- * @returns {any} 对应的属性值或 undefined
+ * 高性能深度比较
+ * 使用 WeakMap 缓存对象，避免重复比较引用
+ * @param {any} a
+ * @param {any} b
+ * @param {WeakMap} cache
+ */
+function smartDeepEqual(a, b, cache = new WeakMap()) {
+  if (a === b) return true
+  if (typeof a !== typeof b) return false
+  if (a == null || b == null) return false
+
+  if (typeof a === 'object') {
+    if (cache.has(a)) return cache.get(a) === b
+    cache.set(a, b)
+  }
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!smartDeepEqual(a[i], b[i], cache)) return false
+    }
+    return true
+  }
+
+  if (typeof a === 'object') {
+    const keysA = Object.keys(a)
+    const keysB = Object.keys(b)
+    if (keysA.length !== keysB.length) return false
+    for (const key of keysA) {
+      if (!smartDeepEqual(a[key], b[key], cache)) return false
+    }
+    return true
+  }
+
+  return a === b
+}
+
+/**
+ * 安全获取对象深层属性
+ * @param {object} obj
+ * @param {string} path
  */
 function getByPath(obj, path) {
   if (!obj || !path) return undefined
   try {
     const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.')
-    return keys.reduce((acc, key) => (acc !== undefined && acc !== null ? acc[key] : undefined), obj)
+    return keys.reduce((acc, key) => (acc != null ? acc[key] : undefined), obj)
   } catch (e) {
     console.error(`[PropertySyncer] getByPath error for path="${path}":`, e)
     return undefined
@@ -19,12 +55,36 @@ function getByPath(obj, path) {
 }
 
 /**
- * PropertySyncer - 精准属性同步器
- * 
- * @param {object|Ref} source - 源响应式对象
- * @param {Array|Object} mappings - 映射配置
- * @param {object} options - { immediate: true, deep: false }
- * @returns {Function} stopSync() 停止所有监听
+ * 数组逐项更新，保持对象引用，避免 v-for 重建 DOM
+ * @param {Array} targetArray
+ * @param {Array} newArray
+ */
+function updateArray(targetArray, newArray) {
+  if (!Array.isArray(newArray)) return
+
+  newArray.forEach((item, index) => {
+    if (targetArray[index]) {
+      Object.keys(item).forEach(key => {
+        if (!smartDeepEqual(targetArray[index][key], item[key])) {
+          targetArray[index][key] = item[key]
+        }
+      })
+    } else {
+      targetArray.push({ ...item })
+    }
+  })
+
+  if (targetArray.length > newArray.length) {
+    targetArray.splice(newArray.length)
+  }
+}
+
+/**
+ * PropertySyncer - 精准属性同步器（防闪烁版）
+ * 支持 transform, comparator, deep, immediate
+ * @param {object|Ref} source
+ * @param {Array|Object} mappings
+ * @param {object} options
  */
 export function PropertySyncer(source, mappings = {}, options = {}) {
   const { immediate = true, deep = false } = options
@@ -34,7 +94,9 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
     ? mappings
     : Object.entries(mappings).map(([path, target]) => ({ path, target }))
 
-  const defaultComparator = (a, b) => (a !== a && b !== b ? false : a !== b)
+  const defaultComparator = deep
+    ? (a, b) => !smartDeepEqual(a, b, new WeakMap())
+    : (a, b) => a !== b
 
   for (const [i, item] of mapsArray.entries()) {
     const { path, target } = item
@@ -46,35 +108,40 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
 
     const getter = () => transform(getByPath(unref(source), path))
 
-    const stop = watch(getter, (newVal, oldVal) => {
-      if (comparator(newVal, oldVal)) {
-        target.value = newVal
-      }
-    }, { immediate, deep })
+    const stop = watch(
+      getter,
+      (newVal, oldVal) => {
+        if (!comparator(newVal, oldVal)) return
+
+        // 如果目标是数组，按属性更新
+        if (Array.isArray(newVal) && Array.isArray(target.value)) {
+          updateArray(target.value, newVal)
+        } else {
+          target.value = newVal
+        }
+      },
+      { immediate, deep }
+    )
 
     stops.push(stop)
   }
 
-  return () => stops.forEach((s) => s())
+  return () => stops.forEach(s => s())
 }
 
 /**
- * usePropertySyncBlock - 组合式函数，管理一组属性同步
- *
- * @param {object|Ref} source - 源响应式对象
- * @param {Function} getMappings - 返回该 block 的 mappings 数组
- * @param {object} options - watch 配置，可选 { immediate: true, deep: false }
- * @returns {Function} stopSyncBlock() 停止同步
+ * usePropertySyncBlock - 模块化同步块（推荐）
+ * 自动解绑，支持 transform, comparator, immediate, deep
+ * @param {object|Ref} source
+ * @param {Function} getMappings
+ * @param {object} options
  */
 export function usePropertySyncBlock(source, getMappings, options = { immediate: true, deep: false }) {
   const stopSync = PropertySyncer(source, getMappings(), options)
-
   onUnmounted(() => stopSync())
-
   return stopSync
 }
 
-// 默认导出
 export default {
   PropertySyncer,
   usePropertySyncBlock
