@@ -1,11 +1,8 @@
-import { watch, unref, onUnmounted } from 'vue'
+import { watch, unref, onUnmounted, isRef } from 'vue'
 
 /**
  * 高性能深度比较
  * 使用 WeakMap 缓存对象，避免重复比较引用
- * @param {any} a
- * @param {any} b
- * @param {WeakMap} cache
  */
 function smartDeepEqual(a, b, cache = new WeakMap()) {
   if (a === b) return true
@@ -40,37 +37,62 @@ function smartDeepEqual(a, b, cache = new WeakMap()) {
 
 /**
  * 安全获取对象深层属性
- * @param {object} obj
- * @param {string} path
+ * 支持 a.b[0].c 形式
  */
-function getByPath(obj, path) {
+function getByPath(obj, path, cache = new Map()) {
   if (!obj || !path) return undefined
-  try {
-    const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.')
-    return keys.reduce((acc, key) => (acc != null ? acc[key] : undefined), obj)
-  } catch (e) {
-    console.error(`[PropertySyncer] getByPath error for path="${path}":`, e)
-    return undefined
-  }
+  if (cache.has(path)) return cache.get(path)(obj)
+
+  // 编译 path 为访问函数以提高性能
+  const fn = new Function(
+    'obj',
+    `try { return obj${path.replace(/\[(\d+)\]/g, '.$1').split('.').map(k => k ? `["${k}"]` : '').join('')} } catch(e){ return undefined }`
+  )
+  cache.set(path, fn)
+  return fn(obj)
 }
 
 /**
- * 数组逐项更新，保持对象引用，避免 v-for 重建 DOM
- * @param {Array} targetArray
- * @param {Array} newArray
+ * 安全设置对象深层属性（用于双向同步）
+ */
+function setByPath(obj, path, value) {
+  if (!obj || !path) return
+  const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.')
+  let current = obj
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i]
+    if (!(key in current) || typeof current[key] !== 'object') {
+      current[key] = isNaN(keys[i + 1]) ? {} : []
+    }
+    current = current[key]
+  }
+  current[keys[keys.length - 1]] = value
+}
+
+/**
+ * 安全数组同步
+ * ✅ 支持基本类型和对象数组
+ * ✅ 支持嵌套更新
  */
 function updateArray(targetArray, newArray) {
   if (!Array.isArray(newArray)) return
 
   newArray.forEach((item, index) => {
-    if (targetArray[index]) {
+    if (item === null || typeof item !== 'object') {
+      if (targetArray[index] !== item) {
+        targetArray[index] = item
+      }
+      return
+    }
+
+    if (targetArray[index] && typeof targetArray[index] === 'object') {
       Object.keys(item).forEach(key => {
         if (!smartDeepEqual(targetArray[index][key], item[key])) {
           targetArray[index][key] = item[key]
         }
       })
     } else {
-      targetArray.push({ ...item })
+      targetArray[index] = Array.isArray(item) ? [...item] : { ...item }
     }
   })
 
@@ -80,15 +102,18 @@ function updateArray(targetArray, newArray) {
 }
 
 /**
- * PropertySyncer - 精准属性同步器（防闪烁版）
- * 支持 transform, comparator, deep, immediate
- * @param {object|Ref} source
- * @param {Array|Object} mappings
- * @param {object} options
+ * PropertySyncer - 高性能属性同步器（增强版）
+ * 支持 transform、comparator、deep、immediate、双向同步
  */
 export function PropertySyncer(source, mappings = {}, options = {}) {
-  const { immediate = true, deep = false } = options
+  const {
+    immediate = true,
+    deep = false,
+    bidirectional = false, // 新增：是否启用双向同步
+  } = options
+
   const stops = []
+  const cache = new Map()
 
   const mapsArray = Array.isArray(mappings)
     ? mappings
@@ -100,20 +125,21 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
 
   for (const [i, item] of mapsArray.entries()) {
     const { path, target } = item
-    if (!path) throw new Error(`[PropertySyncer] mappings 第 ${i} 项缺少 path`)
-    if (!target || !('value' in target)) throw new Error(`[PropertySyncer] mappings 第 ${i} 项 target 不是有效的 ref`)
+    if (!path) throw new Error(`[PropertySyncer] 第 ${i} 项缺少 path`)
+    if (!target || !('value' in target))
+      throw new Error(`[PropertySyncer] 第 ${i} 项 target 不是有效的 ref`)
 
-    const transform = typeof item.transform === 'function' ? item.transform : (v) => v
+    const transform = typeof item.transform === 'function' ? item.transform : v => v
     const comparator = typeof item.comparator === 'function' ? item.comparator : defaultComparator
 
-    const getter = () => transform(getByPath(unref(source), path))
+    const getter = () => transform(getByPath(unref(source), path, cache))
 
-    const stop = watch(
+    // ---- 🔁 单向同步（source → target） ----
+    const stopForward = watch(
       getter,
       (newVal, oldVal) => {
         if (!comparator(newVal, oldVal)) return
 
-        // 如果目标是数组，按属性更新
         if (Array.isArray(newVal) && Array.isArray(target.value)) {
           updateArray(target.value, newVal)
         } else {
@@ -123,18 +149,28 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
       { immediate, deep }
     )
 
-    stops.push(stop)
+    stops.push(stopForward)
+
+    // ---- 🔁 双向同步（target → source，可选） ----
+    if (bidirectional) {
+      const stopReverse = watch(
+        target,
+        (newVal, oldVal) => {
+          if (!comparator(newVal, oldVal)) return
+          setByPath(unref(source), path, newVal)
+        },
+        { deep }
+      )
+      stops.push(stopReverse)
+    }
   }
 
   return () => stops.forEach(s => s())
 }
 
 /**
- * usePropertySyncBlock - 模块化同步块（推荐）
- * 自动解绑，支持 transform, comparator, immediate, deep
- * @param {object|Ref} source
- * @param {Function} getMappings
- * @param {object} options
+ * usePropertySyncBlock - 模块化同步块
+ * 支持自动解绑与增强功能
  */
 export function usePropertySyncBlock(source, getMappings, options = { immediate: true, deep: false }) {
   const stopSync = PropertySyncer(source, getMappings(), options)
