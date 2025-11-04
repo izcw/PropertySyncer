@@ -3,6 +3,11 @@
 高性能 Vue 3 响应式属性同步工具，用于在响应式对象与多个 ref 之间进行精准、可控的属性映射与更新。
 支持 深层路径访问、transform 转换函数、comparator 比较函数、immediate 初始化同步、deep 深度监听，并提供模块化的 usePropertySyncBlock 方案，轻松管理多组同步关系。
 
+![compare](https://picserver.duoyu.link/picfile/image/202511/04-1762248301725.png)
+
+- [使用指南](#UserGuide)
+- [API文档](#API)
+
 ## 功能特性
 
 - 精确路径同步：支持深层路径（如 Master[0].volume），安全访问数组与对象属性。
@@ -31,9 +36,9 @@
 | **防闪烁**    | ❌ `v-for` 重建 DOM       | ✅ 数组逐项更新，保留对象引用                                                                 |
 | **双向同步**   | ❌ 不支持                  | ✅ 可选 `{ bidirectional: true }` 双向数据流                                            |
 
-## API
+## API <a id="API"></a>
 
-### usePropertySyncBlock(source, mappings, options?)
+usePropertySyncBlock(source, mappings, options?)
 
 | 参数                      | 类型                | 说明                     |
 | ----------------------- | ----------------- | ---------------------- |
@@ -43,7 +48,7 @@
 | `options.deep`          | `boolean`         | 是否深度监听（默认 `false`）     |
 | `options.bidirectional` | `boolean`         | 是否启用双向同步（默认 `false`） |
 
-### mappings 数组项属性
+mappings 数组项属性
 
 | 属性            | 类型                                      | 说明                           |
 | ------------- | --------------------------------------- | ---------------------------- |
@@ -52,25 +57,25 @@
 | `transform?`  | `(value: any) => any`                   | 可选，对源值进行转换再写入目标              |
 | `comparator?` | `(newVal: any, oldVal: any) => boolean` | 可选，自定义比较逻辑，返回 true 时更新目标值    |
 
-### 返回值
+返回值
 
 Function → 调用可停止所有监听（默认组件销毁自动停止监听）
 
-## 使用指南
+## 使用指南 <a id="UserGuide"></a>
 
-### 安装
+安装
 
 ```bash
 pnpm i property-syncer
 ```
 
-### 导入
+导入
 
 ```bash
 import { usePropertySyncBlock } from 'property-syncer'
 ```
 
-### 基础用法：usePropertySyncBlock
+基础用法：usePropertySyncBlock
 
 ```javascript
 const OutputSwitch1 = ref('0')
@@ -84,7 +89,7 @@ usePropertySyncBlock(store.data, () => [
 ], { immediate: true}) // 可选 { immediate: true, deep:false }
 ```
 
-### 高级用法
+高级用法
 
 ```javascript
 const temperature = ref(0)
@@ -103,19 +108,19 @@ stopSync() // 主动停止监听
 
 ## 开发与发布
 
-### 安装依赖
+安装依赖
 
 ```bash
 pnpm install
 ```
 
-### 打包发布
+打包发布
 
 ```bash
 pnpm run build
 ```
 
-### 发布到 npm
+发布到 npm
 
 ```bash
 pnpm publish --access public
