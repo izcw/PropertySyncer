@@ -163,27 +163,19 @@ function updateArray(targetArray, newArray) {
     const newItem = newArray[i]
     const targetItem = targetArray[i]
 
-    if (newItem === null || typeof newItem !== 'object') {
+    // 如果是原始值或数组，直接赋值
+    if (newItem === null || typeof newItem !== 'object' || Array.isArray(newItem)) {
       if (targetItem !== newItem) {
         targetArray[i] = newItem
       }
       continue
     }
 
-    if (targetItem && typeof targetItem === 'object') {
-      // 合并对象属性
-      if (Array.isArray(newItem) && Array.isArray(targetItem)) {
-        if (!smartDeepEqual(targetItem, newItem)) {
-          targetArray[i] = [...newItem]
-        }
-      } else if (!Array.isArray(newItem) && !Array.isArray(targetItem)) {
-        // 浅合并对象
-        Object.assign(targetItem, newItem)
-      } else {
-        targetArray[i] = Array.isArray(newItem) ? [...newItem] : { ...newItem }
-      }
+    // 是对象类型：执行对象合并
+    if (targetItem && typeof targetItem === 'object' && !Array.isArray(targetItem)) {
+      Object.assign(targetItem, newItem)  // 浅合并
     } else {
-      targetArray[i] = Array.isArray(newItem) ? [...newItem] : { ...newItem }
+      targetArray[i] = { ...newItem }  // 只有这里才需要展开
     }
   }
 
@@ -191,7 +183,9 @@ function updateArray(targetArray, newArray) {
   if (newArray.length > targetArray.length) {
     for (let i = targetArray.length; i < newArray.length; i++) {
       const item = newArray[i]
-      targetArray.push(Array.isArray(item) ? [...item] : { ...item })
+      // 修复：判断是否需要展开
+      const needSpread = item !== null && typeof item === 'object' && !Array.isArray(item)
+      targetArray.push(needSpread ? { ...item } : item)
     }
   }
   // 删除多余元素
