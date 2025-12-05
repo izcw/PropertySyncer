@@ -1,6 +1,6 @@
 {
   "name": "property-syncer",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "高性能 Vue 3 响应式属性同步工具，用于在响应式对象与多个ref之间进行精准、可控的属性映射与更新。",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",

@@ -9,47 +9,47 @@ import { watch, unref, onUnmounted } from 'vue'
  * @returns {boolean} 如果值深度相等则返回true
  */
 function smartDeepEqual(a, b, cache = new WeakMap()) {
-  // 快速路径：相同引用或值
-  if (a === b) return true
+    // 快速路径：相同引用或值
+    if (a === b) return true
 
-  // 类型不同直接返回false
-  if (typeof a !== typeof b) return false
+    // 类型不同直接返回false
+    if (typeof a !== typeof b) return false
 
-  // 处理null/undefined
-  if (a == null || b == null) return a === b
+    // 处理null/undefined
+    if (a == null || b == null) return a === b
 
-  // 处理非对象类型
-  if (typeof a !== 'object') return a === b
+    // 处理非对象类型
+    if (typeof a !== 'object') return a === b
 
-  // 检查缓存避免循环引用
-  if (cache.has(a)) return cache.get(a) === b
-  cache.set(a, b)
+    // 检查缓存避免循环引用
+    if (cache.has(a)) return cache.get(a) === b
+    cache.set(a, b)
 
-  // 处理数组
-  if (Array.isArray(a)) {
-    if (!Array.isArray(b) || a.length !== b.length) return false
+    // 处理数组
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) return false
 
-    for (let i = 0; i < a.length; i++) {
-      if (!smartDeepEqual(a[i], b[i], cache)) return false
+        for (let i = 0; i < a.length; i++) {
+            if (!smartDeepEqual(a[i], b[i], cache)) return false
+        }
+        return true
     }
+
+    // 处理对象
+    const keysA = Object.keys(a)
+    const keysB = Object.keys(b)
+
+    if (keysA.length !== keysB.length) return false
+
+    // 使用Set提高查找性能
+    const keysSet = new Set(keysB)
+
+    for (const key of keysA) {
+        if (!keysSet.has(key)) return false
+        if (!smartDeepEqual(a[key], b[key], cache)) return false
+    }
+
     return true
-  }
-
-  // 处理对象
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-
-  if (keysA.length !== keysB.length) return false
-
-  // 使用Set提高查找性能
-  const keysSet = new Set(keysB)
-
-  for (const key of keysA) {
-    if (!keysSet.has(key)) return false
-    if (!smartDeepEqual(a[key], b[key], cache)) return false
-  }
-
-  return true
 }
 
 /**
@@ -60,35 +60,35 @@ function smartDeepEqual(a, b, cache = new WeakMap()) {
  * @returns {boolean} 路径是否存在
  */
 function checkPathExists(obj, path, debug = false) {
-  if (!obj || !path || typeof path !== 'string') return false
+    if (!obj || !path || typeof path !== 'string') return false
 
-  const segments = path
-    .replace(/\[(\d+)\]/g, '.$1')
-    .split('.')
-    .filter(Boolean)
+    const segments = path
+        .replace(/\[(\d+)\]/g, '.$1')
+        .split('.')
+        .filter(Boolean)
 
-  let current = obj
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i]
+    let current = obj
+    for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i]
 
-    if (current == null || typeof current !== 'object') {
-      if (debug) {
-        console.warn(`[PropertySyncer] 路径 "${path}" 访问失败: 在 "${segments.slice(0, i).join('.')}" 处无法访问 "${segment}"`)
-      }
-      return false
+        if (current == null || typeof current !== 'object') {
+            if (debug) {
+                console.warn(`[PropertySyncer] 路径 "${path}" 访问失败: 在 "${segments.slice(0, i).join('.')}" 处无法访问 "${segment}"`)
+            }
+            return false
+        }
+
+        if (!(segment in current)) {
+            if (debug) {
+                console.warn(`[PropertySyncer] 路径 "${path}" 不存在: 属性 "${segment}" 在对象中未找到`)
+            }
+            return false
+        }
+
+        current = current[segment]
     }
 
-    if (!(segment in current)) {
-      if (debug) {
-        console.warn(`[PropertySyncer] 路径 "${path}" 不存在: 属性 "${segment}" 在对象中未找到`)
-      }
-      return false
-    }
-
-    current = current[segment]
-  }
-
-  return true
+    return true
 }
 
 /**
@@ -99,41 +99,41 @@ function checkPathExists(obj, path, debug = false) {
 const pathCache = new Map()
 
 function compilePath(path) {
-  if (pathCache.has(path)) return pathCache.get(path)
+    if (pathCache.has(path)) return pathCache.get(path)
 
-  try {
-    const segments = path
-      .replace(/\[(\d+)\]/g, '.$1')
-      .split('.')
-      .filter(Boolean)
+    try {
+        const segments = path
+            .replace(/\[(\d+)\]/g, '.$1')
+            .split('.')
+            .filter(Boolean)
 
-    const fn = (obj, debug = false) => {
-      let current = obj
+        const fn = (obj, debug = false) => {
+            let current = obj
 
-      // 路径检测和调试输出
-      if (debug && current != null) {
-        const exists = checkPathExists(current, path, debug)
-        if (!exists && debug) {
-          console.warn(`[PropertySyncer] 路径 "${path}" 在对象中不存在，返回 undefined`)
+            // 路径检测和调试输出
+            if (debug && current != null) {
+                const exists = checkPathExists(current, path, debug)
+                if (!exists && debug) {
+                    console.warn(`[PropertySyncer] 路径 "${path}" 在对象中不存在，返回 undefined`)
+                }
+            }
+
+            for (const segment of segments) {
+                if (current == null || typeof current !== 'object') {
+                    return undefined
+                }
+                current = current[segment]
+            }
+            return current
         }
-      }
 
-      for (const segment of segments) {
-        if (current == null || typeof current !== 'object') {
-          return undefined
-        }
-        current = current[segment]
-      }
-      return current
+        pathCache.set(path, fn)
+        return fn
+    } catch {
+        const fn = () => undefined
+        pathCache.set(path, fn)
+        return fn
     }
-
-    pathCache.set(path, fn)
-    return fn
-  } catch {
-    const fn = () => undefined
-    pathCache.set(path, fn)
-    return fn
-  }
 }
 
 /**
@@ -144,8 +144,8 @@ function compilePath(path) {
  * @returns {any} 返回路径对应的值，如果路径不存在返回undefined
  */
 function getByPath(obj, path, debug = false) {
-  if (!obj || !path || typeof path !== 'string') return undefined
-  return compilePath(path)(obj, debug)
+    if (!obj || !path || typeof path !== 'string') return undefined
+    return compilePath(path)(obj, debug)
 }
 
 /**
@@ -154,44 +154,44 @@ function getByPath(obj, path, debug = false) {
  * @param {Array} newArray - 新数组
  */
 function updateArray(targetArray, newArray) {
-  if (!Array.isArray(newArray) || !Array.isArray(targetArray)) return
+    if (!Array.isArray(newArray) || !Array.isArray(targetArray)) return
 
-  const minLength = Math.min(targetArray.length, newArray.length)
+    const minLength = Math.min(targetArray.length, newArray.length)
 
-  // 更新已有位置的元素
-  for (let i = 0; i < minLength; i++) {
-    const newItem = newArray[i]
-    const targetItem = targetArray[i]
+    // 更新已有位置的元素
+    for (let i = 0; i < minLength; i++) {
+        const newItem = newArray[i]
+        const targetItem = targetArray[i]
 
-    // 如果是原始值或数组，直接赋值
-    if (newItem === null || typeof newItem !== 'object' || Array.isArray(newItem)) {
-      if (targetItem !== newItem) {
-        targetArray[i] = newItem
-      }
-      continue
+        // 如果是原始值或数组，直接赋值
+        if (newItem === null || typeof newItem !== 'object' || Array.isArray(newItem)) {
+            if (targetItem !== newItem) {
+                targetArray[i] = newItem
+            }
+            continue
+        }
+
+        // 是对象类型：执行对象合并
+        if (targetItem && typeof targetItem === 'object' && !Array.isArray(targetItem)) {
+            Object.assign(targetItem, newItem)  // 浅合并
+        } else {
+            targetArray[i] = { ...newItem }  // 只有这里才需要展开
+        }
     }
 
-    // 是对象类型：执行对象合并
-    if (targetItem && typeof targetItem === 'object' && !Array.isArray(targetItem)) {
-      Object.assign(targetItem, newItem)  // 浅合并
-    } else {
-      targetArray[i] = { ...newItem }  // 只有这里才需要展开
+    // 添加新元素
+    if (newArray.length > targetArray.length) {
+        for (let i = targetArray.length; i < newArray.length; i++) {
+            const item = newArray[i]
+            // 修复：判断是否需要展开
+            const needSpread = item !== null && typeof item === 'object' && !Array.isArray(item)
+            targetArray.push(needSpread ? { ...item } : item)
+        }
     }
-  }
-
-  // 添加新元素
-  if (newArray.length > targetArray.length) {
-    for (let i = targetArray.length; i < newArray.length; i++) {
-      const item = newArray[i]
-      // 修复：判断是否需要展开
-      const needSpread = item !== null && typeof item === 'object' && !Array.isArray(item)
-      targetArray.push(needSpread ? { ...item } : item)
+    // 删除多余元素
+    else if (newArray.length < targetArray.length) {
+        targetArray.splice(newArray.length)
     }
-  }
-  // 删除多余元素
-  else if (newArray.length < targetArray.length) {
-    targetArray.splice(newArray.length)
-  }
 }
 
 /**
@@ -202,25 +202,175 @@ function updateArray(targetArray, newArray) {
  * @throws {Error} 如果配置项无效则抛出错误
  */
 function validateMapping(item, index) {
-  if (!item || typeof item !== 'object') {
-    throw new Error(`[PropertySyncer] 第 ${index} 项配置无效`)
-  }
+    if (!item || typeof item !== 'object') {
+        throw new Error(`[PropertySyncer] 第 ${index} 项配置无效`)
+    }
 
-  if (!item.path || typeof item.path !== 'string') {
-    throw new Error(`[PropertySyncer] 第 ${index} 项缺少有效的 path`)
-  }
+    if (!item.path || typeof item.path !== 'string') {
+        throw new Error(`[PropertySyncer] 第 ${index} 项缺少有效的 path`)
+    }
 
-  if (!item.target || typeof item.target !== 'object' || !('value' in item.target)) {
-    throw new Error(`[PropertySyncer] 第 ${index} 项 target 不是有效的 ref`)
-  }
+    if (!item.target || typeof item.target !== 'object' || !('value' in item.target)) {
+        throw new Error(`[PropertySyncer] 第 ${index} 项 target 不是有效的 ref`)
+    }
 
-  return {
-    path: item.path,
-    target: item.target,
-    transform: typeof item.transform === 'function' ? item.transform : (v) => v,
-    comparator: typeof item.comparator === 'function' ? item.comparator : null,
-    deep: item.deep !== undefined ? Boolean(item.deep) : undefined
-  }
+    return {
+        path: item.path,
+        target: item.target,
+        transform: typeof item.transform === 'function' ? item.transform : (v) => v,
+        comparator: typeof item.comparator === 'function' ? item.comparator : null,
+        deep: item.deep !== undefined ? Boolean(item.deep) : undefined
+    }
+}
+
+/**
+ * 创建只读代理，防止修改传入的参数
+ * @param {any} value - 要包装的值
+ * @param {string} functionName - 函数名称（transform或comparator）
+ * @param {string} path - 路径，用于错误信息
+ * @param {boolean} debug - 是否启用调试模式
+ * @returns {any} 只读代理或原始值
+ */
+function createReadOnlyProxy(value, functionName, path, debug) {
+    // 基本类型直接返回，不需要代理
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+
+    // 数组的只读代理
+    if (Array.isArray(value)) {
+        return new Proxy(value, {
+            get(target, prop) {
+                const result = target[prop];
+                // 如果是嵌套对象，递归创建只读代理
+                if (result !== null && typeof result === 'object') {
+                    return createReadOnlyProxy(result, functionName, path, debug);
+                }
+                // 如果是方法，返回一个包装函数来阻止修改
+                if (typeof result === 'function') {
+                    return function (...args) {
+                        const methodName = prop.toString();
+                        // 检查是否是修改数组的方法
+                        const mutatingMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'];
+                        if (mutatingMethods.includes(methodName) && debug) {
+                            console.error(
+                                `[PropertySyncer] 错误：路径 "${path}" 的${functionName}参数是只读的\n` +
+                                `如需修改，请对引用类型的参数进行深拷贝后再修改。`
+                            );
+                            // 为了兼容性，返回默认值而不是抛出错误
+                            if (methodName === 'pop' || methodName === 'shift') return undefined;
+                            if (methodName === 'sort' || methodName === 'reverse') return target;
+                            return 0; // 对于push/unshift返回0
+                        }
+                        return result.apply(target, args);
+                    };
+                }
+                return result;
+            },
+            set(target, prop, value) {
+                if (debug) {
+                    console.error(
+                        `[PropertySyncer] 错误：路径 "${path}" 的${functionName}参数是只读的\n` +
+                        `如需修改，请对引用类型的参数进行深拷贝后再修改。`
+                    );
+                }
+                return false; // 阻止修改
+            },
+            deleteProperty(target, prop) {
+                if (debug) {
+                    console.error(
+                        `[PropertySyncer] 错误：路径 "${path}" 的${functionName}参数是只读的\n` +
+                        `如需修改，请对引用类型的参数进行深拷贝后再修改。`
+                    );
+                }
+                return false; // 阻止删除
+            }
+        });
+    }
+
+    // 普通对象的只读代理
+    return new Proxy(value, {
+        get(target, prop) {
+            const result = target[prop];
+            // 如果是嵌套对象，递归创建只读代理
+            if (result !== null && typeof result === 'object') {
+                return createReadOnlyProxy(result, functionName, path, debug);
+            }
+            return result;
+        },
+        set(target, prop, value) {
+            if (debug) {
+                console.error(
+                    `[PropertySyncer] 错误：路径 "${path}" 的${functionName}参数是只读的\n` +
+                    `如需修改，请对引用类型的参数进行深拷贝后再修改。`
+                );
+            }
+            return false; // 阻止修改
+        },
+        deleteProperty(target, prop) {
+            if (debug) {
+                console.error(
+                    `[PropertySyncer] 错误：路径 "${path}" 的${functionName}参数是只读的\n` +
+                    `如需修改，请对引用类型的参数进行深拷贝后再修改。`
+                );
+            }
+            return false; // 阻止删除
+        }
+    });
+}
+
+/**
+ * 安全执行函数，使用只读代理包装参数
+ * @param {Function} fn - 要执行的函数
+ * @param {any} value - 函数的参数
+ * @param {string} functionName - 函数名称
+ * @param {string} path - 路径
+ * @param {boolean} debug - 调试模式
+ * @param {boolean} useReadOnlyProxy - 是否使用只读代理
+ * @returns {any} 函数的返回值
+ */
+function safeExecute(fn, value, functionName, path, debug, useReadOnlyProxy = true) {
+    try {
+        const safeValue = useReadOnlyProxy && value !== null && typeof value === 'object'
+            ? createReadOnlyProxy(value, functionName, path, debug)
+            : value;
+
+        return fn(safeValue);
+    } catch (error) {
+        if (debug) {
+            console.error(`[PropertySyncer] ${functionName} 执行失败，路径: ${path}`, error);
+        }
+        throw error;
+    }
+}
+
+/**
+ * 安全执行comparator函数，使用只读代理包装两个参数
+ * @param {Function} fn - comparator函数
+ * @param {any} newVal - 新值
+ * @param {any} oldVal - 旧值
+ * @param {string} path - 路径
+ * @param {boolean} debug - 调试模式
+ * @param {boolean} useReadOnlyProxy - 是否使用只读代理
+ * @returns {any} comparator的返回值
+ */
+function safeExecuteComparator(fn, newVal, oldVal, path, debug, useReadOnlyProxy = true) {
+    try {
+        const safeNewVal = useReadOnlyProxy && newVal !== null && typeof newVal === 'object'
+            ? createReadOnlyProxy(newVal, 'comparator', path, debug)
+            : newVal;
+
+        const safeOldVal = useReadOnlyProxy && oldVal !== null && typeof oldVal === 'object'
+            ? createReadOnlyProxy(oldVal, 'comparator', path, debug)
+            : oldVal;
+
+        return fn(safeNewVal, safeOldVal);
+    } catch (error) {
+        if (debug) {
+            console.error(`[PropertySyncer] comparator 执行失败，路径: ${path}`, error);
+        }
+        throw error;
+    }
 }
 
 /**
@@ -231,73 +381,97 @@ function validateMapping(item, index) {
  * @returns {Function} 返回监听处理函数
  */
 function createWatcherHandler(validatedItem, globalDeep, debug) {
-  const { path, target, transform, comparator, deep: itemDeep } = validatedItem
-  const useDeep = itemDeep !== undefined ? itemDeep : globalDeep
+    const { path, target, transform, comparator, deep: itemDeep } = validatedItem
+    const useDeep = itemDeep !== undefined ? itemDeep : globalDeep
 
-  return (sourceValue, oldSourceValue) => {
-    // 第一步：比较值是否变化
-    const isDifferent = useDeep
-      ? !smartDeepEqual(sourceValue, oldSourceValue, new WeakMap())
-      : sourceValue !== oldSourceValue
+    return (sourceValue, oldSourceValue) => {
+        // 第一步：比较值是否变化
+        const isDifferent = useDeep
+            ? !smartDeepEqual(sourceValue, oldSourceValue, new WeakMap())
+            : sourceValue !== oldSourceValue
 
-    if (!isDifferent) return
+        if (!isDifferent) return
 
-    // 第二步：执行comparator（如果有）
-    let shouldUpdate = true
+        // 第二步：执行comparator（如果有），使用只读代理
+        let shouldUpdate = true
 
-    if (comparator) {
-      try {
-        const comparatorResult = comparator(sourceValue, oldSourceValue)
+        if (comparator) {
+            try {
+                const comparatorResult = safeExecuteComparator(
+                    comparator,
+                    sourceValue,
+                    oldSourceValue,
+                    path,
+                    debug,
+                    true // 始终使用只读代理保护comparator参数
+                )
 
-        if (typeof comparatorResult !== 'boolean') {
-          if (debug) {
-            console.warn(`[PropertySyncer] comparator 应返回布尔值，路径: ${path}`)
-          }
-        } else {
-          shouldUpdate = comparatorResult === true
+                if (typeof comparatorResult !== 'boolean') {
+                    if (debug) {
+                        console.warn(`[PropertySyncer] comparator 应返回布尔值，路径: ${path}`)
+                    }
+                } else {
+                    shouldUpdate = comparatorResult === true
+                }
+            } catch (error) {
+                if (debug) {
+                    console.error(`[PropertySyncer] comparator 执行失败，路径: ${path}`, error)
+                }
+            }
         }
-      } catch (error) {
-        if (debug) {
-          console.error(`[PropertySyncer] comparator 执行失败，路径: ${path}`, error)
+
+
+        if (!shouldUpdate) return
+
+        // 第三步：执行transform，使用只读代理
+        let finalValue
+        try {
+            const transformedValue = safeExecute(
+                transform,
+                sourceValue,
+                'transform',
+                path,
+                debug,
+                true // 始终使用只读代理保护transform参数
+            )
+
+            if (typeof transformedValue === 'undefined') {
+                if (debug) {
+                    console.warn(`[PropertySyncer] transform 未返回值，使用原始值，路径: ${path}`)
+                }
+                finalValue = sourceValue
+            } else {
+                finalValue = transformedValue
+
+                // 检查transform是否返回了源数据的引用（可能造成问题）
+                if (debug && finalValue === sourceValue && sourceValue !== null && typeof sourceValue === 'object') {
+                    console.warn(
+                        `[PropertySyncer] 警告：路径 "${path}" 的transform函数返回了源数据的引用。\n` +
+                        `由于transform参数是只读的，修改操作被阻止，这可能导致预期外的结果。\n` +
+                        `建议返回一个新的对象而不是修改源数据引用。`
+                    )
+                }
+            }
+        } catch (error) {
+            if (debug) {
+                console.error(`[PropertySyncer] transform 执行失败，路径: ${path}`, error)
+            }
+            finalValue = sourceValue
         }
-      }
-    }
 
-    if (!shouldUpdate) return
-
-    // 第三步：执行transform
-    let finalValue
-    try {
-      const transformedValue = transform(sourceValue)
-
-      if (typeof transformedValue === 'undefined') {
-        if (debug) {
-          console.warn(`[PropertySyncer] transform 未返回值，使用原始值，路径: ${path}`)
+        // 第四步：更新目标
+        try {
+            if (Array.isArray(finalValue) && Array.isArray(target.value)) {
+                updateArray(target.value, finalValue)
+            } else {
+                target.value = finalValue
+            }
+        } catch (error) {
+            if (debug) {
+                console.error(`[PropertySyncer] 更新目标失败，路径: ${path}`, error)
+            }
         }
-        finalValue = sourceValue
-      } else {
-        finalValue = transformedValue
-      }
-    } catch (error) {
-      if (debug) {
-        console.error(`[PropertySyncer] transform 执行失败，路径: ${path}`, error)
-      }
-      finalValue = sourceValue
     }
-
-    // 第四步：更新目标
-    try {
-      if (Array.isArray(finalValue) && Array.isArray(target.value)) {
-        updateArray(target.value, finalValue)
-      } else {
-        target.value = finalValue
-      }
-    } catch (error) {
-      if (debug) {
-        console.error(`[PropertySyncer] 更新目标失败，路径: ${path}`, error)
-      }
-    }
-  }
 }
 
 /**
@@ -312,82 +486,82 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
  * @returns {Function} 返回清理函数，用于停止监听
  */
 export function PropertySyncer(source, mappings = {}, options = {}) {
-  const {
-    immediate = true,
-    deep = false,
-    debug = true  // 默认开启调试模式
-  } = options
+    const {
+        immediate = true,
+        deep = false,
+        debug = true  // 默认开启调试模式
+    } = options
 
-  // 统一配置格式
-  const mapsArray = Array.isArray(mappings)
-    ? mappings
-    : Object.entries(mappings).map(([path, target]) => ({ path, target }))
+    // 统一配置格式
+    const mapsArray = Array.isArray(mappings)
+        ? mappings
+        : Object.entries(mappings).map(([path, target]) => ({ path, target }))
 
-  if (mapsArray.length === 0) {
-    if (debug) {
-      console.warn('[PropertySyncer] 未提供有效的映射配置')
-    }
-    return () => { }
-  }
-
-  const stops = []
-  const warnedPaths = new Set() // 记录已警告的路径，避免重复警告
-
-  for (const [index, item] of mapsArray.entries()) {
-    try {
-      const validatedItem = validateMapping(item, index)
-      const watcherHandler = createWatcherHandler(validatedItem, deep, debug)
-
-      // 创建响应式监听
-      const stop = watch(
-        () => {
-          const src = unref(source)
-          const value = getByPath(src, validatedItem.path, debug)
-
-          // 路径检测和调试输出
-          if (debug && src != null && value === undefined && !warnedPaths.has(validatedItem.path)) {
-            const pathExists = checkPathExists(src, validatedItem.path, false)
-            if (!pathExists) {
-              console.warn(`[PropertySyncer] 路径 "${validatedItem.path}" 在源对象中不存在`)
-              warnedPaths.add(validatedItem.path)
-            }
-          }
-
-          return value
-        },
-        watcherHandler,
-        {
-          immediate,
-          deep: false // 我们自己处理深度比较
-        }
-      )
-
-      stops.push(stop)
-
-      if (debug) {
-        // console.log(`[PropertySyncer] 已监听路径: ${validatedItem.path}`)
-      }
-    } catch (error) {
-      if (debug) {
-        console.error(`[PropertySyncer] 配置项 ${index} 初始化失败:`, error)
-      }
-    }
-  }
-
-  // 返回清理函数
-  return () => {
-    for (const stop of stops) {
-      try {
-        stop()
-      } catch (error) {
+    if (mapsArray.length === 0) {
         if (debug) {
-          console.error('[PropertySyncer] 清理监听器失败:', error)
+            console.warn('[PropertySyncer] 未提供有效的映射配置')
         }
-      }
+        return () => { }
     }
-    stops.length = 0
-    warnedPaths.clear()
-  }
+
+    const stops = []
+    const warnedPaths = new Set() // 记录已警告的路径，避免重复警告
+
+    for (const [index, item] of mapsArray.entries()) {
+        try {
+            const validatedItem = validateMapping(item, index)
+            const watcherHandler = createWatcherHandler(validatedItem, deep, debug)
+
+            // 创建响应式监听
+            const stop = watch(
+                () => {
+                    const src = unref(source)
+                    const value = getByPath(src, validatedItem.path, debug)
+
+                    // 路径检测和调试输出
+                    if (debug && src != null && value === undefined && !warnedPaths.has(validatedItem.path)) {
+                        const pathExists = checkPathExists(src, validatedItem.path, false)
+                        if (!pathExists) {
+                            console.warn(`[PropertySyncer] 路径 "${validatedItem.path}" 在源对象中不存在`)
+                            warnedPaths.add(validatedItem.path)
+                        }
+                    }
+
+                    return value
+                },
+                watcherHandler,
+                {
+                    immediate,
+                    deep: false // 我们自己处理深度比较
+                }
+            )
+
+            stops.push(stop)
+
+            if (debug) {
+                // console.log(`[PropertySyncer] 已监听路径: ${validatedItem.path}`)
+            }
+        } catch (error) {
+            if (debug) {
+                console.error(`[PropertySyncer] 配置项 ${index} 初始化失败:`, error)
+            }
+        }
+    }
+
+    // 返回清理函数
+    return () => {
+        for (const stop of stops) {
+            try {
+                stop()
+            } catch (error) {
+                if (debug) {
+                    console.error('[PropertySyncer] 清理监听器失败:', error)
+                }
+            }
+        }
+        stops.length = 0
+        warnedPaths.clear()
+    }
 }
 
 /**
@@ -402,46 +576,49 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
  * @returns {Function} 返回清理函数，用于停止监听
  */
 export function usePropertySyncBlock(source, getMappings, options = {}) {
-  const {
-    immediate = true,
-    deep = false,
-    debug = true  // 默认开启调试模式
-  } = options
+    const {
+        immediate = true,
+        deep = false,
+        debug = true  // 默认开启调试模式
+    } = options
 
-  let stopSync = null
+    let stopSync = null
 
-  try {
-    const mappings = getMappings()
-    stopSync = PropertySyncer(source, mappings, { immediate, deep, debug })
-  } catch (error) {
-    if (debug) {
-      console.error('[usePropertySyncBlock] 初始化失败:', error)
+    try {
+        const mappings = getMappings()
+        stopSync = PropertySyncer(source, mappings, { immediate, deep, debug })
+    } catch (error) {
+        if (debug) {
+            console.error('[usePropertySyncBlock] 初始化失败:', error)
+        }
+        // 返回一个空清理函数
+        return () => { }
     }
-    // 返回一个空清理函数
-    return () => { }
-  }
 
-  onUnmounted(() => {
-    if (stopSync) {
-      stopSync()
-      stopSync = null
-    }
-  })
+    onUnmounted(() => {
+        if (stopSync) {
+            stopSync()
+            stopSync = null
+        }
+    })
 
-  return stopSync
+    return stopSync
 }
 
 // 导出工具函数，方便测试和扩展
 export const utils = {
-  smartDeepEqual,
-  getByPath,
-  updateArray,
-  compilePath,
-  checkPathExists
+    smartDeepEqual,
+    getByPath,
+    updateArray,
+    compilePath,
+    checkPathExists,
+    createReadOnlyProxy,
+    safeExecute,
+    safeExecuteComparator
 }
 
 export default {
-  PropertySyncer,
-  usePropertySyncBlock,
-  utils
+    PropertySyncer,
+    usePropertySyncBlock,
+    utils
 }
