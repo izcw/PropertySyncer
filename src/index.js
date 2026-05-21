@@ -1,4 +1,35 @@
-import { watch, unref, onUnmounted } from 'vue'
+import { watch, unref, onUnmounted, ref, readonly } from "vue";
+
+export function useRestoreTimer(onRestore, delay = 3000) {
+  const active = ref(false);
+  let timer = null;
+
+  const clear = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    active.value = false;
+  };
+
+  const schedule = () => {
+    clear();
+    active.value = true;
+    timer = setTimeout(() => {
+      timer = null;
+      active.value = false;
+      onRestore();
+    }, delay);
+  };
+
+  onUnmounted?.(clear);
+
+  return {
+    active: readonly(active), // true: 恢复期中, false: 未启动/已结束
+    clear,
+    schedule,
+  };
+}
 
 /**
  * 深拷贝函数
@@ -259,13 +290,21 @@ function validateMapping(item, index) {
     throw new Error(`[PropertySyncer] 第 ${index} 项 target 不是有效的 ref`)
   }
 
+  // === 新增：解析 recover 配置 ===
+  let recover = 0;
+  if (item.recover !== undefined) {
+    const num = Number(item.recover);
+    recover = Number.isFinite(num) && num > 0 ? num : 0;
+  }
+
   return {
     path: item.path,
     target: item.target,
     transform: typeof item.transform === 'function' ? item.transform : (v) => v,
     comparator: typeof item.comparator === 'function' ? item.comparator : null,
     deep: item.deep !== undefined ? Boolean(item.deep) : undefined,
-    copyData: item.copyData !== undefined ? Boolean(item.copyData) : true
+    copyData: item.copyData !== undefined ? Boolean(item.copyData) : true,
+    recover, // 新增：0 表示关闭，>0 表示延迟毫秒
   }
 }
 
@@ -277,15 +316,15 @@ function validateMapping(item, index) {
  * @returns {Function} 返回监听处理函数
  */
 function createWatcherHandler(validatedItem, globalDeep, debug) {
-  const { 
-    path, 
-    target, 
-    transform, 
-    comparator, 
+  const {
+    path,
+    target,
+    transform,
+    comparator,
     deep: itemDeep,
     copyData
   } = validatedItem
-  
+
   const useDeep = itemDeep !== undefined ? itemDeep : globalDeep
 
   return (sourceValue, oldSourceValue) => {
@@ -293,7 +332,7 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
     const isDifferent = useDeep
       ? !isDeepEqual(sourceValue, oldSourceValue)
       : sourceValue !== oldSourceValue
-    
+
     if (!isDifferent) return
 
     // 第二步：执行comparator
@@ -301,15 +340,15 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
       try {
         // 准备comparator参数
         const comparatorNewVal = copyData && sourceValue !== null && typeof sourceValue === 'object'
-          ? deepCopy(sourceValue)
-          : sourceValue
-        
+            ? deepCopy(sourceValue)
+            : sourceValue
+
         const comparatorOldVal = copyData && oldSourceValue !== null && typeof oldSourceValue === 'object'
-          ? deepCopy(oldSourceValue)
-          : oldSourceValue
-        
+            ? deepCopy(oldSourceValue)
+            : oldSourceValue
+
         const comparatorResult = comparator(comparatorNewVal, comparatorOldVal)
-        
+
         if (typeof comparatorResult === 'boolean' && !comparatorResult) {
           return // comparator返回false，跳过更新
         }
@@ -320,20 +359,20 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
 
     // 第三步：执行transform
     let finalValue
-    
+
     try {
       // 准备transform参数
       const transformInput = copyData && sourceValue !== null && typeof sourceValue === 'object'
-        ? deepCopy(sourceValue)
-        : sourceValue
-      
+          ? deepCopy(sourceValue)
+          : sourceValue
+
       const transformedValue = transform(transformInput)
 
       if (typeof transformedValue === 'undefined') {
         finalValue = transformInput
       } else {
         finalValue = transformedValue
-        
+
         // 确保返回的值是深拷贝的
         if (copyData && finalValue !== null && typeof finalValue === 'object') {
           finalValue = deepCopy(finalValue)
@@ -346,14 +385,14 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
     // 第四步：更新目标
     try {
       const currentTargetValue = target.value
-      
+
       // 检查是否需要更新
       const needsUpdate = useDeep
         ? !isDeepEqual(currentTargetValue, finalValue)
         : currentTargetValue !== finalValue
-      
+
       if (!needsUpdate) return
-      
+
       if (Array.isArray(finalValue) && Array.isArray(currentTargetValue)) {
         updateArray(currentTargetValue, finalValue)
       } else {
@@ -370,7 +409,7 @@ function createWatcherHandler(validatedItem, globalDeep, debug) {
  * @param {Object|Ref} source - 源对象或响应式引用
  * @param {Array|Object} mappings - 映射配置数组或对象
  * @param {Object} options - 配置选项
- * @returns {Function} 返回清理函数
+ * @returns {Object} 返回 { stop, recovers }
  */
 export function PropertySyncer(source, mappings = {}, options = {}) {
   const {
@@ -385,15 +424,48 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
     : Object.entries(mappings).map(([path, target]) => ({ path, target }))
 
   if (mapsArray.length === 0) {
-    return () => { }
+    return {stop: () => {}, recovers: new Map()}
   }
 
   const stops = []
   const warnedPaths = new Set()
+  const recovers = new Map(); // 新增：按 target ref 索引的恢复器
 
   for (const [index, item] of mapsArray.entries()) {
     try {
       const validatedItem = validateMapping(item, index)
+      // === 新增：如果配置了 recover，自动创建恢复器并包装 comparator ===
+      if (validatedItem.recover > 0) {
+        const restore = useRestoreTimer(() => {
+          try {
+            const src = unref(source);
+            const rawValue = getByPath(src, validatedItem.path);
+            const finalValue = validatedItem.transform(rawValue);
+
+            if (
+              Array.isArray(finalValue) &&
+              Array.isArray(validatedItem.target.value)
+            ) {
+              updateArray(validatedItem.target.value, finalValue);
+            } else {
+              validatedItem.target.value = finalValue;
+            }
+          } catch (e) {
+            // 静默失败
+          }
+        }, validatedItem.recover);
+
+        recovers.set(validatedItem.target, restore);
+
+        // 包装 comparator：恢复期阻止外部数据同步到本地
+        const userComparator = validatedItem.comparator;
+        validatedItem.comparator = (newVal, oldVal) => {
+          if (restore.active.value) return false;
+          if (!userComparator) return true;
+          return userComparator(newVal, oldVal);
+        };
+      }
+
       const watcherHandler = createWatcherHandler(validatedItem, deep, debug)
 
       // 创建响应式监听
@@ -426,18 +498,28 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
     }
   }
 
-  // 返回清理函数
-  return () => {
-    for (const stop of stops) {
+  // 返回清理函数和恢复器集合
+  const stop = () => {
+    for (const s of stops) {
       try {
-        stop()
+        s()
       } catch {
         // 静默失败
       }
     }
-    stops.length = 0
-    warnedPaths.clear()
-  }
+    for (const [, restore] of recovers) {
+      try {
+        restore.clear();
+      } catch {
+        // 静默失败
+      }
+    }
+    stops.length = 0;
+    recovers.clear();
+    warnedPaths.clear();
+  };
+
+  return { stop, recovers };
 }
 
 /**
@@ -445,7 +527,7 @@ export function PropertySyncer(source, mappings = {}, options = {}) {
  * @param {Object|Ref} source - 源对象或响应式引用
  * @param {Function} getMappings - 获取映射配置的函数
  * @param {Object} options - 配置选项
- * @returns {Function} 返回清理函数
+ * @returns {Object} 返回 { stop, recovers }
  */
 export function usePropertySyncBlock(source, getMappings, options = {}) {
   const {
@@ -454,22 +536,22 @@ export function usePropertySyncBlock(source, getMappings, options = {}) {
     debug = false
   } = options
 
-  let stopSync = null
+  let result = null
 
   try {
     const mappings = getMappings()
-    stopSync = PropertySyncer(source, mappings, { immediate, deep, debug })
+    result = PropertySyncer(source, mappings, { immediate, deep, debug })
   } catch {
-    return () => { }
+    return { stop: () => {}, recovers: new Map() }
   }
 
   onUnmounted(() => {
-    if (stopSync) {
-      stopSync()
+    if (result) {
+      result.stop()
     }
   })
 
-  return stopSync || (() => {})
+  return result || { stop: () => {}, recovers: new Map() };
 }
 
 // 导出工具函数
